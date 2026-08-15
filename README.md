@@ -79,3 +79,18 @@ npm run dev
   недоступна — это ограничение самого Steam API, не сайта.
 - Если игрок не привязал FACEIT к Steam или у него нет матчей в CS2,
   блок FACEIT покажет соответствующее сообщение.
+
+
+## CS2 Premier Rating
+
+The project includes a Premier rating block.
+
+Lookup order:
+1. Unofficial Leetify profile endpoint (`rankType === 11`) for the current Premier rating and recent Premier games.
+2. Public CSStats profile scraping as a fallback if the Leetify endpoint is unavailable.
+
+The result uses short Next.js caching to reduce upstream requests, and the UI shows which unofficial source supplied the value.
+
+`LEETIFY_KEY` is optional. Add it to Vercel Environment Variables if you have one; the public endpoint is still attempted when it is not set.
+
+Premier is not exposed by the official Steam Web API, so unofficial sources can change or stop working without notice.

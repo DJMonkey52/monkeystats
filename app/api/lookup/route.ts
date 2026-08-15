@@ -8,6 +8,7 @@ import {
   resolveVanityUrl
 } from "@/lib/steam";
 import { getFaceitCs2Stats, getFaceitPlayerBySteamId } from "@/lib/faceit";
+import { getPremierRating } from "@/lib/premier";
 
 export const runtime = "nodejs";
 
@@ -43,7 +44,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Профиль Steam не найден." }, { status: 404 });
     }
 
-    const faceitPlayer = await getFaceitPlayerBySteamId(steamid64).catch(() => null);
+    const [faceitPlayer, premier] = await Promise.all([
+      getFaceitPlayerBySteamId(steamid64).catch(() => null),
+      getPremierRating(steamid64).catch(() => null)
+    ]);
     const faceitStats = faceitPlayer
       ? await getFaceitCs2Stats(faceitPlayer.player_id).catch(() => null)
       : null;
@@ -54,6 +58,7 @@ export async function GET(req: NextRequest) {
       bans,
       steamLevel: level,
       playtime,
+      premier,
       faceit: faceitPlayer
         ? {
             nickname: faceitPlayer.nickname,
@@ -68,7 +73,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error(err);
     return NextResponse.json(
-      { error: "Внутренняя ошибка при обращении к Steam/FACEIT API." },
+      { error: "Внутренняя ошибка при обращении к Steam/FACEIT/Premier источникам." },
       { status: 500 }
     );
   }

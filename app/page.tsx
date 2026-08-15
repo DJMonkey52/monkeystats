@@ -28,6 +28,23 @@ interface LookupResult {
   } | null;
   steamLevel: number | null;
   playtime: { forever_minutes: number; recent_minutes: number; visible: boolean };
+  premier: {
+    rating: number;
+    previousRating: number | null;
+    ratingChange: number | null;
+    season: number | null;
+    recentGames: {
+      gameId: string;
+      mapName: string;
+      matchResult: "win" | "loss" | "tie";
+      skillLevel: number;
+      rankType: number | null;
+      elo: number | null;
+    }[];
+    source: "leetify" | "csstats";
+    sourceUrl: string;
+    fetchedAt: string;
+  } | null;
   faceit: {
     nickname: string;
     avatar: string;
@@ -108,8 +125,8 @@ export default function Home() {
             <span className="text-t">на любого игрока</span>
           </h1>
           <p className="mx-auto mt-4 max-w-xl font-body text-sm text-muted sm:text-base">
-            Вставь ссылку на Steam-профиль, SteamID64/32 или ник — получишь профиль, FACEIT
-            уровень и ELO, статус банов и наигранное время в CS2.
+            Вставь ссылку на Steam-профиль, SteamID64/32 или ник — получишь профиль, Premier rating,
+            FACEIT уровень и ELO, статус банов и наигранное время в CS2.
           </p>
 
           <form onSubmit={handleSearch} className="relative mx-auto mt-10 max-w-xl">
@@ -226,6 +243,74 @@ export default function Home() {
               </div>
             </Panel>
 
+            {result.premier ? (
+              <Panel
+                eyebrow="CS2 PREMIER"
+                title="Рейтинг"
+                accent="ct"
+                right={
+                  <Badge tone={result.premier.ratingChange !== null && result.premier.ratingChange >= 0 ? "win" : "loss"}>
+                    {result.premier.ratingChange === null
+                      ? "АКТУАЛЬНЫЙ"
+                      : `${result.premier.ratingChange >= 0 ? "+" : ""}${result.premier.ratingChange}`}
+                  </Badge>
+                }
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <div className="font-mono text-xs uppercase tracking-widest2 text-dim">
+                      {result.premier.season ? `Season ${result.premier.season}` : "Текущий рейтинг"}
+                    </div>
+                    <div className="mt-1 font-display text-5xl font-bold tracking-tight text-ink">
+                      {result.premier.rating.toLocaleString("ru-RU")}
+                    </div>
+                    {result.premier.previousRating !== null && (
+                      <div className="mt-1 font-mono text-xs text-dim">
+                        Предыдущий: {result.premier.previousRating.toLocaleString("ru-RU")}
+                      </div>
+                    )}
+                  </div>
+                  <a
+                    href={result.premier.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-[11px] text-dim underline decoration-line2 underline-offset-2 hover:text-t"
+                  >
+                    Источник: {result.premier.source === "leetify" ? "Leetify" : "CSStats"}
+                  </a>
+                </div>
+
+                {result.premier.recentGames.length > 0 && (
+                  <div className="mt-5">
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-widest2 text-dim">
+                      Последние Premier матчи
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {result.premier.recentGames.slice(0, 6).map((game, i) => (
+                        <div key={`${game.gameId}-${i}`} className="flex items-center justify-between border border-line2 bg-panel px-3 py-2">
+                          <div className="min-w-0">
+                            <div className="truncate font-mono text-xs text-ink">{game.mapName}</div>
+                            <div className="font-mono text-[10px] text-dim">
+                              {game.matchResult === "win" ? "WIN" : game.matchResult === "loss" ? "LOSS" : "TIE"}
+                            </div>
+                          </div>
+                          <span className="ml-3 shrink-0 font-mono text-sm font-semibold text-t">
+                            {game.skillLevel.toLocaleString("ru-RU")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Panel>
+            ) : (
+              <Panel eyebrow="CS2 PREMIER" title="Рейтинг" accent="ct">
+                <p className="font-mono text-sm text-dim">
+                  Premier rating не удалось получить. Источники рейтинга могут быть временно недоступны.
+                </p>
+              </Panel>
+            )}
+
             {result.faceit ? (
               <Panel
                 eyebrow="FACEIT"
@@ -322,9 +407,9 @@ export default function Home() {
             )}
 
             <p className="text-center font-mono text-[11px] text-dim">
-              Официального публичного API для рейтинга Premier / рангов конкурентного режима
-              не существует — Valve его не предоставляет, поэтому здесь показаны только данные
-              из официальных Steam Web API и FACEIT Data API.
+              Premier rating получен через неофициальные источники. Основной источник — профильный
+              endpoint Leetify, запасной — парсинг публичной страницы CSStats. Такие источники могут
+              измениться или временно перестать отдавать рейтинг без предупреждения.
             </p>
           </div>
         )}
