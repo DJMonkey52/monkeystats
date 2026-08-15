@@ -1,438 +1,216 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
-import RadarBackdrop from "@/components/RadarBackdrop";
-import { Panel } from "@/components/Panel";
-import { Stat, StatGrid } from "@/components/StatGrid";
-import { RankBadge } from "@/components/RankBadge";
+
+interface MatchRow {
+  id: string; date: string; map: string; mode: string; result: "win" | "loss" | "tie" | "unknown";
+  score: string; banned: boolean; kills: number; deaths: number; assists: number; headshots: number;
+  hsPercent: number; kd: number; adr: number; damage: number; rounds: number; rating: number;
+  ctRating: number; tRating: number; scorePoints: number; mvps: number; accuracy: number; preaim: number;
+  reaction: number; sprayAccuracy: number; survived: number; multi1k: number; multi2k: number;
+  multi3k: number; multi4k: number; multi5k: number; tradeKills: number; tradeKillSuccess: number;
+  tradedDeaths: number; tradedDeathSuccess: number; flashAssists: number; flashThrown: number;
+  heThrown: number; molotovThrown: number; smokeThrown: number;
+}
+
+interface Analytics {
+  matches: MatchRow[]; sampleSize: number; totalTrackedMatches: number; firstMatchDate: string | null;
+  totals: Record<string, number>; ratings: Record<string, number | null>; lifetimeStats: Record<string, number | null>;
+  ranks: Record<string, unknown>; source: string;
+}
 
 interface LookupResult {
   steamid64: string;
-  profile: {
-    steamid: string;
-    personaname: string;
-    profileurl: string;
-    avatarfull: string;
-    personastate: number;
-    communityvisibilitystate: number;
-    timecreated?: number;
-    loccountrycode?: string;
-  };
-  bans: {
-    VACBanned: boolean;
-    NumberOfVACBans: number;
-    NumberOfGameBans: number;
-    DaysSinceLastBan: number;
-    CommunityBanned: boolean;
-  } | null;
+  profile: { steamid: string; personaname: string; profileurl: string; avatarfull: string; personastate: number; communityvisibilitystate: number; timecreated?: number; loccountrycode?: string };
+  bans: { VACBanned: boolean; NumberOfVACBans: number; NumberOfGameBans: number; DaysSinceLastBan: number; CommunityBanned: boolean } | null;
   steamLevel: number | null;
   playtime: { forever_minutes: number; recent_minutes: number; visible: boolean };
-  premier: {
-    rating: number;
-    previousRating: number | null;
-    ratingChange: number | null;
-    season: number | null;
-    recentGames: {
-      gameId: string;
-      mapName: string;
-      matchResult: "win" | "loss" | "tie";
-      skillLevel: number;
-      rankType: number | null;
-      elo: number | null;
-    }[];
-    source: "leetify" | "csstats";
-    sourceUrl: string;
-    fetchedAt: string;
-  } | null;
-  faceit: {
-    nickname: string;
-    avatar: string;
-    country: string;
-    url?: string;
-    cs2: { skill_level: number; faceit_elo: number; region: string } | null;
-    stats: {
-      matches: number;
-      winRate: number;
-      avgKd: number;
-      avgHsPercent: number;
-      currentWinStreak: number;
-      longestWinStreak: number;
-      recentResults: ("W" | "L")[];
-    } | null;
-  } | null;
+  premier: { rating: number; previousRating: number | null; ratingChange: number | null; season: number | null; recentGames: { gameId: string; mapName: string; matchResult: string; skillLevel: number; rankType: number | null; elo: number | null }[]; source: string; sourceUrl: string; fetchedAt: string } | null;
+  leetify: Analytics | null;
+  faceit: null | { nickname: string; avatar: string; country: string; url?: string; cs2: { skill_level: number; faceit_elo: number; region: string } | null; stats: { matches: number; winRate: number; avgKd: number; avgHsPercent: number; currentWinStreak: number; longestWinStreak: number; recentResults: ("W" | "L")[] } | null };
 }
 
-function hoursFromMinutes(min: number) {
-  return Math.round(min / 60);
-}
+const examples = ["76561197971307841", "https://steamcommunity.com/id/donk"];
 
-function formatDate(unix?: number) {
-  if (!unix) return "—";
-  return new Date(unix * 1000).toLocaleDateString("ru-RU", {
-    year: "numeric",
-    month: "long",
-    day: "numeric"
-  });
+function n(v: unknown, digits = 0) {
+  return typeof v === "number" && Number.isFinite(v) ? v.toLocaleString("ru-RU", { maximumFractionDigits: digits }) : "—";
 }
+function pct(v: unknown, digits = 1) { return typeof v === "number" && Number.isFinite(v) ? `${v.toFixed(digits)}%` : "—"; }
+function date(v?: string | number | null) { if (!v) return "—"; const d = typeof v === "number" ? new Date(v * 1000) : new Date(v); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("ru-RU", { day: "2-digit", month: "short", year: "numeric" }); }
+function hours(min: number) { return Math.round(min / 60).toLocaleString("ru-RU"); }
 
-const PLACEHOLDER_EXAMPLES = [
-  "https://steamcommunity.com/id/donk",
-  "76561198252283240",
-  "STEAM_0:0:12345678"
-];
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return <div className="stat-card"><div className="label">{label}</div><div className="value">{value}</div>{sub && <div className="sub">{sub}</div>}</div>;
+}
+function Section({ title, kicker, children }: { title: string; kicker: string; children: React.ReactNode }) {
+  return <section className="section"><div className="section-head"><div><div className="kicker">{kicker}</div><h2>{title}</h2></div></div>{children}</section>;
+}
+function BarStat({ label, value, max = 100, suffix = "" }: { label: string; value: number; max?: number; suffix?: string }) {
+  const width = Math.max(0, Math.min(100, (value / max) * 100));
+  return <div className="bar-row"><div className="bar-top"><span>{label}</span><b>{value.toFixed(1)}{suffix}</b></div><div className="bar"><span style={{ width: `${width}%` }} /></div></div>;
+}
 
 export default function Home() {
   const [query, setQuery] = useState("");
+  const [result, setResult] = useState<LookupResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<LookupResult | null>(null);
+  const [tab, setTab] = useState<"overview" | "matches" | "performance">("overview");
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
+  async function search(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!query.trim()) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
+    setLoading(true); setError(null);
     try {
       const res = await fetch(`/api/lookup?q=${encodeURIComponent(query.trim())}`);
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Не удалось выполнить поиск.");
-        return;
-      }
-      setResult(data as LookupResult);
-    } catch {
-      setError("Сеть недоступна или сервер не ответил. Попробуйте ещё раз.");
-    } finally {
-      setLoading(false);
-    }
+      if (!res.ok) throw new Error(data.error ?? "Ошибка запроса");
+      setResult(data); setTab("overview");
+    } catch (e) { setError(e instanceof Error ? e.message : "Не удалось загрузить статистику"); }
+    finally { setLoading(false); }
   }
 
-  return (
-    <main className="relative min-h-screen">
-      <div className="relative">
-        <RadarBackdrop />
+  const a = result?.leetify;
+  const t = a?.totals;
+  const recent = a?.matches ?? [];
+  const latestRating = result?.premier?.rating ?? (typeof a?.ranks?.premier === "number" ? a.ranks.premier : null);
+  const ratingChange = result?.premier?.ratingChange ?? null;
+  const performance = useMemo(() => {
+    if (!recent.length) return null;
+    const sorted = [...recent].sort((x, y) => y.rating - x.rating);
+    return { best: sorted[0], worst: sorted[sorted.length - 1] };
+  }, [recent]);
 
-        <div className="relative mx-auto max-w-3xl px-6 pt-24 pb-10 text-center sm:pt-32">
-          <div className="mb-4 inline-flex items-center gap-2 font-mono text-xs uppercase tracking-widest2 text-t">
-            <span className="h-1.5 w-1.5 rounded-full bg-t" />
-            Live Steam &amp; FACEIT lookup
-          </div>
-          <h1 className="font-display text-4xl font-bold uppercase leading-tight tracking-wide text-ink sm:text-6xl">
-            Найди досье
-            <br />
-            <span className="text-t">на любого игрока</span>
-          </h1>
-          <p className="mx-auto mt-4 max-w-xl font-body text-sm text-muted sm:text-base">
-            Вставь ссылку на Steam-профиль, SteamID64/32 или ник — получишь профиль, Premier rating,
-            FACEIT уровень и ELO, статус банов и наигранное время в CS2.
-          </p>
+  return <main>
+    <header className="topbar">
+      <div className="brand"><span className="brand-mark">R</span><div><strong>RADAR</strong><small>CS2 PLAYER INTELLIGENCE</small></div></div>
+      <div className="live"><i /> LIVE DATA</div>
+    </header>
 
-          <form onSubmit={handleSearch} className="relative mx-auto mt-10 max-w-xl">
-            <div className="flex items-center gap-0 border border-line2 bg-panel clip-notch focus-within:border-t/70">
-              <span className="pl-4 font-mono text-dim">›</span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="steamcommunity.com/id/... или SteamID64"
-                className="w-full bg-transparent px-3 py-4 font-mono text-sm text-ink placeholder:text-dim focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={loading}
-                className="shrink-0 bg-t px-6 py-4 font-display text-sm font-semibold uppercase tracking-wide text-void transition hover:bg-gold disabled:opacity-50"
-              >
-                {loading ? "Поиск…" : "Найти"}
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 font-mono text-[11px] text-dim">
-              <span>Примеры:</span>
-              {PLACEHOLDER_EXAMPLES.map((ex) => (
-                <button
-                  type="button"
-                  key={ex}
-                  onClick={() => setQuery(ex)}
-                  className="underline decoration-line2 underline-offset-2 hover:text-t"
-                >
-                  {ex}
-                </button>
-              ))}
-            </div>
-          </form>
-        </div>
+    <div className="hero">
+      <div className="hero-grid" />
+      <div className="hero-inner">
+        <div className="eyebrow">PLAYER DATABASE / CS2</div>
+        <h1>Полная статистика<br /><span>любого игрока</span></h1>
+        <p>Premier rating, последние 30 матчей, K/D, ADR, HS%, Leetify performance, оружие и игровые показатели — в одном профиле.</p>
+        <form onSubmit={search} className="search">
+          <div className="search-icon">⌕</div>
+          <input value={query} onChange={e => setQuery(e.target.value)} placeholder="SteamID64, Steam URL или vanity URL" />
+          <button disabled={loading}>{loading ? "ЗАГРУЗКА" : "ANALYZE"}</button>
+        </form>
+        <div className="examples">Быстрый поиск: {examples.map(x => <button key={x} onClick={() => { setQuery(x); }}>{x}</button>)}</div>
       </div>
+    </div>
 
-      <div className="mx-auto max-w-3xl px-6 pb-24">
-        {error && (
-          <div className="animate-rise border border-loss/60 bg-loss/10 px-5 py-4 font-mono text-sm text-loss">
-            {error}
+    <div className="container">
+      {error && <div className="error">{error}</div>}
+      {!result && !loading && <div className="empty"><div className="empty-number">01</div><h2>Введите Steam-профиль</h2><p>Сайт получит профиль Steam и расширенную статистику CS2 из доступных источников.</p></div>}
+
+      {result && <>
+        <section className="profile-head">
+          <Image src={result.profile.avatarfull} alt="" width={96} height={96} className="avatar" />
+          <div className="identity">
+            <div className="identity-line"><h2>{result.profile.personaname}</h2>{result.profile.personastate === 1 && <span className="online">ONLINE</span>}</div>
+            <div className="steamid">{result.steamid64}</div>
+            <div className="badges">
+              {result.bans?.VACBanned ? <span className="badge danger">VAC ×{result.bans.NumberOfVACBans}</span> : <span className="badge good">CLEAN</span>}
+              {result.profile.loccountrycode && <span className="badge">{result.profile.loccountrycode}</span>}
+              {result.steamLevel !== null && <span className="badge">STEAM LVL {result.steamLevel}</span>}
+            </div>
           </div>
-        )}
+          <a className="profile-link" href={result.profile.profileurl} target="_blank" rel="noreferrer">STEAM PROFILE ↗</a>
+        </section>
 
-        {result && (
-          <div className="flex flex-col gap-6">
-            <Panel eyebrow="Steam" title="Профиль" accent="ct">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <div className="relative shrink-0">
-                  <Image
-                    src={result.profile.avatarfull}
-                    alt={result.profile.personaname}
-                    width={88}
-                    height={88}
-                    className="border border-line2"
-                  />
-                  {result.steamLevel !== null && (
-                    <div className="absolute -bottom-2 -right-2 border border-line2 bg-void px-1.5 py-0.5 font-mono text-[10px] text-gold">
-                      LVL {result.steamLevel}
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <a
-                    href={result.profile.profileurl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="truncate font-display text-2xl font-semibold text-ink hover:text-ct"
-                  >
-                    {result.profile.personaname}
-                  </a>
-                  <div className="mt-1 font-mono text-xs text-dim">{result.steamid64}</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {result.profile.communityvisibilitystate !== 3 && (
-                      <Badge tone="loss">Приватный профиль</Badge>
-                    )}
-                    {result.bans?.VACBanned && (
-                      <Badge tone="loss">
-                        VAC ×{result.bans.NumberOfVACBans}
-                      </Badge>
-                    )}
-                    {result.bans && result.bans.NumberOfGameBans > 0 && (
-                      <Badge tone="loss">Игровой бан ×{result.bans.NumberOfGameBans}</Badge>
-                    )}
-                    {result.bans && !result.bans.VACBanned && result.bans.NumberOfGameBans === 0 && (
-                      <Badge tone="win">Чист</Badge>
-                    )}
-                    {result.profile.loccountrycode && (
-                      <Badge tone="muted">{result.profile.loccountrycode}</Badge>
-                    )}
-                  </div>
-                </div>
+        <nav className="tabs">
+          {([["overview", "Обзор"], ["matches", "30 матчей"], ["performance", "Performance"]] as const).map(([key, label]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}>{label}</button>)}
+        </nav>
+
+        {tab === "overview" && <div className="stack">
+          <Section kicker="PREMIER" title="Рейтинг сезона">
+            <div className="rating-layout">
+              <div className="rating-main"><span>CURRENT RATING</span><strong>{latestRating !== null ? n(latestRating) : "—"}</strong><div className="rating-meta">{ratingChange !== null ? <b className={ratingChange >= 0 ? "positive" : "negative"}>{ratingChange >= 0 ? "+" : ""}{n(ratingChange)} после последней игры</b> : "Рейтинг из доступного источника"}</div></div>
+              <div className="rating-side"><div><span>SEASON</span><b>{result.premier?.season ? `S${result.premier.season}` : "—"}</b></div><div><span>TRACKED</span><b>{n(a?.totalTrackedMatches)}</b></div><div><span>30-MATCH WINRATE</span><b>{pct(t?.winRate)}</b></div></div>
+            </div>
+          </Section>
+
+          <Section kicker="LAST 30" title="Основные показатели">
+            <div className="stats-grid">
+              <StatCard label="K/D" value={n(t?.kd, 2)} sub={`${n(t?.kills)} K / ${n(t?.deaths)} D`} />
+              <StatCard label="ADR" value={n(t?.adr, 1)} sub={`${n(t?.damage)} damage`} />
+              <StatCard label="HS%" value={pct(t?.hsPercent)} sub={`${n(t?.headshots)} headshots`} />
+              <StatCard label="WIN RATE" value={pct(t?.winRate)} sub={`${n(t?.wins)}W / ${n(t?.losses)}L`} />
+              <StatCard label="RATING" value={n(t?.rating, 2)} sub="Leetify Rating" />
+              <StatCard label="ROUNDS" value={n(t?.rounds)} sub={`${n(t?.matches ?? a?.sampleSize)} tracked matches`} />
+            </div>
+          </Section>
+
+          <div className="two-col">
+            <Section kicker="LEETIFY" title="Performance">
+              <div className="bars">
+                <BarStat label="Aim" value={Number(a?.ratings.aim ?? 0)} />
+                <BarStat label="Positioning" value={Number(a?.ratings.positioning ?? 0)} />
+                <BarStat label="Utility" value={Number(a?.ratings.utility ?? 0)} />
+                <BarStat label="Clutch" value={Number(a?.ratings.clutch ?? 0)} />
+                <BarStat label="Opening" value={Number(a?.ratings.opening ?? 0)} />
               </div>
-
-              <div className="mt-5">
-                <StatGrid>
-                  <Stat label="Аккаунт создан" value={formatDate(result.profile.timecreated)} />
-                  <Stat
-                    label="Часов в CS2"
-                    value={
-                      result.playtime.visible
-                        ? String(hoursFromMinutes(result.playtime.forever_minutes))
-                        : "скрыто"
-                    }
-                  />
-                  <Stat
-                    label="За 2 недели"
-                    value={
-                      result.playtime.visible
-                        ? `${hoursFromMinutes(result.playtime.recent_minutes)} ч`
-                        : "скрыто"
-                    }
-                  />
-                </StatGrid>
-              </div>
-            </Panel>
-
-            {result.premier ? (
-              <Panel
-                eyebrow="CS2 PREMIER"
-                title="Рейтинг"
-                accent="ct"
-                right={
-                  <Badge tone={result.premier.ratingChange !== null && result.premier.ratingChange >= 0 ? "win" : "loss"}>
-                    {result.premier.ratingChange === null
-                      ? "АКТУАЛЬНЫЙ"
-                      : `${result.premier.ratingChange >= 0 ? "+" : ""}${result.premier.ratingChange}`}
-                  </Badge>
-                }
-              >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <div className="font-mono text-xs uppercase tracking-widest2 text-dim">
-                      {result.premier.season ? `Season ${result.premier.season}` : "Текущий рейтинг"}
-                    </div>
-                    <div className="mt-1 font-display text-5xl font-bold tracking-tight text-ink">
-                      {result.premier.rating.toLocaleString("ru-RU")}
-                    </div>
-                    {result.premier.previousRating !== null && (
-                      <div className="mt-1 font-mono text-xs text-dim">
-                        Предыдущий: {result.premier.previousRating.toLocaleString("ru-RU")}
-                      </div>
-                    )}
-                  </div>
-                  <a
-                    href={result.premier.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-mono text-[11px] text-dim underline decoration-line2 underline-offset-2 hover:text-t"
-                  >
-                    Источник: {result.premier.source === "leetify" ? "Leetify" : "CSStats"}
-                  </a>
-                </div>
-
-                {result.premier.recentGames.length > 0 && (
-                  <div className="mt-5">
-                    <div className="mb-2 font-mono text-[10px] uppercase tracking-widest2 text-dim">
-                      Последние Premier матчи
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {result.premier.recentGames.slice(0, 6).map((game, i) => (
-                        <div key={`${game.gameId}-${i}`} className="flex items-center justify-between border border-line2 bg-panel px-3 py-2">
-                          <div className="min-w-0">
-                            <div className="truncate font-mono text-xs text-ink">{game.mapName}</div>
-                            <div className="font-mono text-[10px] text-dim">
-                              {game.matchResult === "win" ? "WIN" : game.matchResult === "loss" ? "LOSS" : "TIE"}
-                            </div>
-                          </div>
-                          <span className="ml-3 shrink-0 font-mono text-sm font-semibold text-t">
-                            {game.skillLevel.toLocaleString("ru-RU")}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Panel>
-            ) : (
-              <Panel eyebrow="CS2 PREMIER" title="Рейтинг" accent="ct">
-                <p className="font-mono text-sm text-dim">
-                  Premier rating не удалось получить. Источники рейтинга могут быть временно недоступны.
-                </p>
-              </Panel>
-            )}
-
-            {result.faceit ? (
-              <Panel
-                eyebrow="FACEIT"
-                title="Статистика"
-                accent="t"
-                right={
-                  result.faceit.cs2 && <RankBadge level={result.faceit.cs2.skill_level} />
-                }
-              >
-                <div className="flex items-center gap-4">
-                  {result.faceit.avatar ? (
-                    <Image
-                      src={result.faceit.avatar}
-                      alt={result.faceit.nickname}
-                      width={56}
-                      height={56}
-                      className="border border-line2"
-                    />
-                  ) : (
-                    <div className="flex h-14 w-14 items-center justify-center border border-line2 bg-panel font-display text-lg text-dim">
-                      {result.faceit.nickname.slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <a
-                      href={result.faceit.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-display text-lg font-semibold text-ink hover:text-t"
-                    >
-                      {result.faceit.nickname}
-                    </a>
-                    <div className="font-mono text-xs text-dim">
-                      {result.faceit.cs2?.region ?? "—"} · ELO{" "}
-                      <span className="text-t">{result.faceit.cs2?.faceit_elo ?? "—"}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {result.faceit.stats ? (
-                  <div className="mt-5">
-                    <StatGrid>
-                      <Stat label="Матчи" value={String(result.faceit.stats.matches)} />
-                      <Stat
-                        label="Винрейт"
-                        value={`${result.faceit.stats.winRate}%`}
-                        accent="win"
-                      />
-                      <Stat label="K/D" value={result.faceit.stats.avgKd.toFixed(2)} />
-                      <Stat label="HS%" value={`${result.faceit.stats.avgHsPercent}%`} />
-                      <Stat
-                        label="Тек. серия побед"
-                        value={String(result.faceit.stats.currentWinStreak)}
-                        accent="gold"
-                      />
-                      <Stat
-                        label="Лучшая серия"
-                        value={String(result.faceit.stats.longestWinStreak)}
-                      />
-                    </StatGrid>
-
-                    {result.faceit.stats.recentResults.length > 0 && (
-                      <div className="mt-4 flex items-center gap-2">
-                        <span className="font-mono text-[10px] uppercase tracking-widest2 text-dim">
-                          Последние матчи
-                        </span>
-                        <div className="flex gap-1">
-                          {result.faceit.stats.recentResults.map((r, i) => (
-                            <span
-                              key={i}
-                              className={`flex h-6 w-6 items-center justify-center font-mono text-[11px] font-bold ${
-                                r === "W" ? "bg-win/20 text-win" : "bg-loss/20 text-loss"
-                              }`}
-                            >
-                              {r}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="mt-4 font-mono text-xs text-dim">
-                    Статистика матчей недоступна.
-                  </p>
-                )}
-              </Panel>
-            ) : (
-              <Panel eyebrow="FACEIT" title="Статистика" accent="t">
-                <p className="font-mono text-sm text-dim">
-                  Аккаунт FACEIT не привязан к этому Steam-профилю или скрыт.
-                </p>
-              </Panel>
-            )}
-
-            <p className="text-center font-mono text-[11px] text-dim">
-              Premier rating получен через неофициальные источники. Основной источник — профильный
-              endpoint Leetify, запасной — парсинг публичной страницы CSStats. Такие источники могут
-              измениться или временно перестать отдавать рейтинг без предупреждения.
-            </p>
+            </Section>
+            <Section kicker="MATCH QUALITY" title="Лучшие / худшие">
+              {performance ? <div className="best-list"><div><span>BEST GAME</span><b>{performance.best.map}</b><strong>{n(performance.best.rating, 2)}</strong><small>{performance.best.score} · {performance.best.kills}/{performance.best.deaths}/{performance.best.assists}</small></div><div><span>LOWEST RATING</span><b>{performance.worst.map}</b><strong>{n(performance.worst.rating, 2)}</strong><small>{performance.worst.score} · {performance.worst.kills}/{performance.worst.deaths}/{performance.worst.assists}</small></div></div> : <div className="muted">Нет обработанных матчей.</div>}
+            </Section>
           </div>
-        )}
-      </div>
-    </main>
-  );
-}
 
-function Badge({
-  children,
-  tone
-}: {
-  children: React.ReactNode;
-  tone: "win" | "loss" | "muted";
-}) {
-  const cls = {
-    win: "border-win/50 text-win",
-    loss: "border-loss/50 text-loss",
-    muted: "border-line2 text-muted"
-  }[tone];
-  return (
-    <span className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${cls}`}>
-      {children}
-    </span>
-  );
+          <Section kicker="ADVANCED" title="Механика и utility">
+            <div className="stats-grid six">
+              <StatCard label="Accuracy" value={pct(t?.accuracy)} />
+              <StatCard label="Preaim" value={n(t?.preaim, 2)} />
+              <StatCard label="Reaction" value={`${n(t?.reaction, 0)} ms`} />
+              <StatCard label="Spray" value={pct(t?.sprayAccuracy)} />
+              <StatCard label="Trade Kills" value={pct(t?.tradeKillSuccess)} />
+              <StatCard label="Traded Deaths" value={pct(t?.tradedDeathSuccess)} />
+            </div>
+          </Section>
+
+          <Section kicker="STEAM" title="Аккаунт">
+            <div className="stats-grid">
+              <StatCard label="CS2 PLAYTIME" value={result.playtime.visible ? `${hours(result.playtime.forever_minutes)} ч` : "скрыто"} />
+              <StatCard label="2 WEEKS" value={result.playtime.visible ? `${hours(result.playtime.recent_minutes)} ч` : "скрыто"} />
+              <StatCard label="ACCOUNT CREATED" value={date(result.profile.timecreated)} />
+              <StatCard label="FIRST TRACKED" value={date(a?.firstMatchDate)} />
+              <StatCard label="FACEIT ELO" value={n(result.faceit?.cs2?.faceit_elo)} />
+              <StatCard label="FACEIT LEVEL" value={n(result.faceit?.cs2?.skill_level)} />
+            </div>
+          </Section>
+        </div>}
+
+        {tab === "matches" && <Section kicker="MATCH HISTORY" title="Последние 30 игр">
+          <div className="match-table-wrap"><table><thead><tr><th>DATE</th><th>MAP</th><th>RESULT</th><th>SCORE</th><th>K/D/A</th><th>ADR</th><th>HS%</th><th>RATING</th></tr></thead><tbody>{recent.map(m => <tr key={m.id}><td>{date(m.date)}</td><td><b>{m.map.replace("de_", "")}</b><small>{m.mode}</small></td><td><span className={`result ${m.result}`}>{m.result === "win" ? "WIN" : m.result === "loss" ? "LOSS" : m.result === "tie" ? "TIE" : "—"}</span></td><td>{m.score}</td><td>{m.kills}/{m.deaths}/{m.assists}</td><td>{n(m.adr, 1)}</td><td>{pct(m.hsPercent)}</td><td><strong>{n(m.rating, 2)}</strong></td></tr>)}</tbody></table></div>
+        </Section>}
+
+        {tab === "performance" && <div className="stack">
+          <Section kicker="30 MATCH SAMPLE" title="Детальная статистика">
+            <div className="stats-grid six">
+              <StatCard label="1K" value={n(recent.reduce((x, m) => x + m.multi1k, 0))} />
+              <StatCard label="2K" value={n(recent.reduce((x, m) => x + m.multi2k, 0))} />
+              <StatCard label="3K" value={n(recent.reduce((x, m) => x + m.multi3k, 0))} />
+              <StatCard label="4K" value={n(recent.reduce((x, m) => x + m.multi4k, 0))} />
+              <StatCard label="5K" value={n(recent.reduce((x, m) => x + m.multi5k, 0))} />
+              <StatCard label="MVPS" value={n(recent.reduce((x, m) => x + m.mvps, 0))} />
+              <StatCard label="FLASH ASSISTS" value={n(recent.reduce((x, m) => x + m.flashAssists, 0))} />
+              <StatCard label="HE THROWN" value={n(recent.reduce((x, m) => x + m.heThrown, 0))} />
+              <StatCard label="MOLOTOV" value={n(recent.reduce((x, m) => x + m.molotovThrown, 0))} />
+              <StatCard label="SMOKES" value={n(recent.reduce((x, m) => x + m.smokeThrown, 0))} />
+              <StatCard label="TRADE KILLS" value={n(recent.reduce((x, m) => x + m.tradeKills, 0))} />
+              <StatCard label="TRADED DEATHS" value={n(recent.reduce((x, m) => x + m.tradedDeaths, 0))} />
+            </div>
+          </Section>
+          <Section kicker="LIFETIME / LEETIFY" title="Доступные lifetime metrics">
+            <div className="stats-grid six">{Object.entries(a?.lifetimeStats ?? {}).map(([key, value]) => <StatCard key={key} label={key.replaceAll("_", " ")} value={typeof value === "number" ? n(value, 2) : "—"} />)}</div>
+          </Section>
+        </div>}
+
+        <footer className="footer">Data provided by Leetify · Premier данные получаются через сторонние источники и могут измениться. <a href="https://leetify.com/" target="_blank" rel="noreferrer">View on Leetify ↗</a> · <a href="https://csstats.gg/" target="_blank" rel="noreferrer">CSStats reference ↗</a></footer>
+      </>}
+    </div>
+  </main>;
 }
