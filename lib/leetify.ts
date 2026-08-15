@@ -28,7 +28,7 @@ export interface MatchPlayerStats {
 
 export interface LeetifyMatch { id: string; finished_at: string; data_source: string; data_source_match_id: string; map_name: string; has_banned_player?: boolean; replay_url?: string; team_scores?: { team_number: number; score: number }[]; stats?: MatchPlayerStats[]; }
 
-function headers(): HeadersInit { const h: Record<string, string> = { "Content-Type": "application/json" }; if (process.env.LEETIFY_API_KEY) h.Authorization = `Bearer ${process.env.LEETIFY_API_KEY}`; return h; }
+function headers(): HeadersInit { const h: Record<string, string> = { "Content-Type": "application/json" }; const key = process.env.LEETIFY_API_KEY ?? process.env.LEETIFY_KEY; if (key) h.Authorization = `Bearer ${key}`; return h; }
 async function get<T>(path: string, params: Record<string, string>) {
   const url = new URL(`${BASE}${path}`); for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12000);

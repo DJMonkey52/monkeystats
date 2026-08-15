@@ -4,6 +4,7 @@ import { getPlayerBans, getPlayerSummary, getSteamLevel, getCs2Playtime, resolve
 import { getFaceitCs2Stats, getFaceitPlayerBySteamId } from "@/lib/faceit";
 import { getPremierRating } from "@/lib/premier";
 import { buildPlayerAnalytics, getLeetifyMatches, getLeetifyProfile } from "@/lib/leetify";
+import { getCsstatsProfile } from "@/lib/csstats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +27,8 @@ export async function GET(req: NextRequest) {
     ]);
     if (!profile) return NextResponse.json({ error: "Steam-профиль не найден или закрыт." }, { status: 404 });
 
-    const [faceitPlayer, premier, leetify] = await Promise.all([
-      getFaceitPlayerBySteamId(steamid64).catch(() => null),
+    const [faceitPlayer, premier, leetify, csstats] = await Promise.all([
+      getFaceitPlayerBySteamId(steamid64, profile.personaname).catch(() => null),
       getPremierRating(steamid64).catch(() => null),
       (async () => {
         try {
@@ -37,7 +38,8 @@ export async function GET(req: NextRequest) {
           console.warn("Leetify v3 lookup failed:", e);
           return null;
         }
-      })()
+      })(),
+      getCsstatsProfile(steamid64).catch(() => null)
     ]);
 
     const faceitStats = faceitPlayer
@@ -59,7 +61,8 @@ export async function GET(req: NextRequest) {
         url: faceitPlayer.faceit_url?.replace("{lang}", "en"),
         cs2: faceitPlayer.games?.cs2 ?? null,
         stats: faceitStats
-      } : null
+      } : null,
+      csstats
     });
   } catch (err) {
     console.error(err);
