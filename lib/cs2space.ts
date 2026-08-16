@@ -97,7 +97,7 @@ function extractPremier(raw: any) {
     if (typeof s === 'number' || typeof s === 'string') { const r = finite(s); if (r != null) return { rating: r, previousRating: null, season: null, history: [] }; }
     if (typeof s === 'object') {
       const rating = num(s.rating, s.elo, s.skillLevel, s.current, s.currentRating, s.rank);
-      if (rating != null) const history = Array.isArray(s.history) ? s.history.map((h: any) => ({ season: num(h.season, h.seasonNumber), rating: num(h.rating, h.currentRating, h.elo, h.current), best: num(h.best, h.bestRating), wins: num(h.wins) })).filter((h: any) => h.season != null) : [];
+      const history = Array.isArray(s.history) ? s.history.map((h: any) => ({ season: num(h.season, h.seasonNumber), rating: num(h.rating, h.currentRating, h.elo, h.current), best: num(h.best, h.bestRating), wins: num(h.wins) })).filter((h: any) => h.season != null) : [];
       return { rating, previousRating: num(s.previousRating, s.previous, s.bestPrevious), season: num(s.season, s.seasonNumber), history };
     }
   }
