@@ -33,7 +33,8 @@ export async function GET(req: NextRequest) {
       (async () => {
         try {
           const [p, m] = await Promise.all([getLeetifyProfile(steamid64), getLeetifyMatches(steamid64)]);
-          return buildPlayerAnalytics(p, m, steamid64);
+          const usable = Array.isArray(m) && m.length ? m : (Array.isArray(p?.recent_matches) ? p.recent_matches as any[] : []);
+          return buildPlayerAnalytics(p, usable as any, steamid64);
         } catch (e) {
           console.warn("Leetify v3 lookup failed:", e);
           return null;
