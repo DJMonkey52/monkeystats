@@ -57,7 +57,7 @@ async function fetchLeetify(steamid64: string): Promise<PremierData | null> {
       next: { revalidate: 300 }
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) { console.warn(`Leetify premier ${res.status} for ${steamid64}`); return null; }
 
     const data = await res.json();
     const games = Array.isArray(data?.games) ? data.games : [];
@@ -106,12 +106,12 @@ async function fetchCsstats(steamid64: string): Promise<PremierData | null> {
       next: { revalidate: 600 }
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) { console.warn(`CSStats premier ${res.status} for ${steamid64}`); return null; }
 
     const html = await res.text();
     const text = decodeHtml(html);
     const seasonMatch = text.match(/Premier\s*-\s*Season\s*(\d+)/i);
-    if (!seasonMatch) return null;
+    if (!seasonMatch) { console.warn(`CSStats premier: no "Premier - Season" marker found for ${steamid64}`); return null; }
 
     const season = Number(seasonMatch[1]);
     const section = text.slice(seasonMatch.index ?? 0, (seasonMatch.index ?? 0) + 700);

@@ -32,7 +32,7 @@ function headers(): HeadersInit { const h: Record<string, string> = { "Content-T
 async function get<T>(path: string, params: Record<string, string>) {
   const url = new URL(`${BASE}${path}`); for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12000);
-  try { const res = await fetch(url, { headers: headers(), cache: "no-store", signal: controller.signal }); if (!res.ok) throw new Error(`Leetify ${res.status}`); return (await res.json()) as T; }
+  try { const res = await fetch(url, { headers: headers(), cache: "no-store", signal: controller.signal }); if (!res.ok) { const body = await res.text().catch(() => ''); console.warn(`Leetify ${path} -> ${res.status} ${res.statusText} :: ${body.slice(0, 300)}`); throw new Error(`Leetify ${res.status}`); } return (await res.json()) as T; }
   finally { clearTimeout(timer); }
 }
 export async function getLeetifyProfile(steamid64: string) { return get<LeetifyProfile>("/v3/profile", { steamId: steamid64 }); }

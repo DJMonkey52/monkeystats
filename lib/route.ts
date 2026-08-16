@@ -29,8 +29,8 @@ export async function GET(req: NextRequest) {
     if (!profile) return NextResponse.json({ error: "Steam-профиль не найден или закрыт." }, { status: 404 });
 
     const [faceitPlayer, premier, leetify, csstats, cs2space] = await Promise.all([
-      getFaceitPlayerBySteamId(steamid64, profile.personaname).catch(() => null),
-      getPremierRating(steamid64).catch(() => null),
+      getFaceitPlayerBySteamId(steamid64, profile.personaname).catch((e) => { console.warn('FACEIT lookup failed:', e); return null; }),
+      getPremierRating(steamid64).catch((e) => { console.warn('Premier lookup failed:', e); return null; }),
       (async () => {
         try {
           const [p, m] = await Promise.all([getLeetifyProfile(steamid64), getLeetifyMatches(steamid64)]);
@@ -41,12 +41,12 @@ export async function GET(req: NextRequest) {
           return null;
         }
       })(),
-      getCsstatsProfile(steamid64).catch(() => null),
+      getCsstatsProfile(steamid64).catch((e) => { console.warn('csstats.gg lookup failed:', e); return null; }),
       getCs2SpaceProfile(steamid64).catch((e) => { console.warn('CS2.SPACE lookup failed:', e); return null; })
     ]);
 
     const faceitStats = faceitPlayer
-      ? await getFaceitCs2Stats(faceitPlayer.player_id).catch(() => null)
+      ? await getFaceitCs2Stats(faceitPlayer.player_id).catch((e) => { console.warn('FACEIT stats lookup failed:', e); return null; })
       : null;
 
     const sp = cs2space?.steam || {};
