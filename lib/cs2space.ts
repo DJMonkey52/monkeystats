@@ -129,28 +129,28 @@ export async function getCs2SpaceProfile(steamid64: string) {
     if (!res.ok) throw new Error(`CS2.SPACE ${res.status}`);
     const raw = await res.json();
     const steam = raw.steam?.profile ?? raw.steam?.player ?? raw.steam ?? raw.profile ?? {};
-    const face = raw.faceit ?? {};
-    const faceGame = face.cs2 ?? face.games?.cs2 ?? {};
-    const lt = raw.leetify ?? {};
-    const ltStats = lt.stats ?? lt.statistics ?? {};
+    const face = raw.faceit ?? null;
+    const faceGame = face?.cs2 ?? face?.games?.cs2 ?? null;
+    const lt = raw.leetify ?? null;
+    const ltStats = lt?.stats ?? lt?.statistics ?? {};
     const premier = extractPremier(raw);
     const directMatches = arr(raw.matches, raw.matchHistory, raw.recentMatches, raw.leetify?.matches, raw.leetify?.matchHistory);
     const matches = directMatches?.length ? normalizeMatches({ matches: directMatches }, steamid64) : normalizeMatches(raw, steamid64);
     const competitiveRanks = normalizeRanks(raw);
-    const kills = num(ltStats.kills, lt.kills, ltStats.total_kills) ?? 0;
-    const deaths = num(ltStats.deaths, lt.deaths, ltStats.total_deaths) ?? 0;
+    const kills = num(ltStats.kills, lt?.kills, ltStats.total_kills) ?? 0;
+    const deaths = num(ltStats.deaths, lt?.deaths, ltStats.total_deaths) ?? 0;
     const rounds = num(ltStats.rounds, ltStats.rounds_count) ?? 0;
     const damage = num(ltStats.damage, ltStats.total_damage) ?? 0;
     const totals = {
-      kd: num(ltStats.kd, lt.kd, ltStats.kd_ratio) ?? (deaths ? kills / deaths : null), hltvRating: num(ltStats.rating, lt.rating, ltStats.hltv_rating),
-      winRate: num(ltStats.winRate, ltStats.win_rate, lt.win_rate), played: num(ltStats.matches, lt.total_matches, matches.length),
-      wins: num(ltStats.wins, lt.wins), losses: num(ltStats.losses, lt.losses), ties: num(ltStats.ties, lt.ties), hsPercent: num(ltStats.hsPercent, ltStats.hs_percent),
-      kills, deaths, assists: num(ltStats.assists, lt.assists), headshots: num(ltStats.headshots, lt.headshots), adr: num(ltStats.adr, lt.adr) ?? (rounds ? damage / rounds : null), damage, rounds
+      kd: num(ltStats.kd, lt?.kd, ltStats.kd_ratio) ?? (deaths ? kills / deaths : null), hltvRating: num(ltStats.rating, lt?.rating, ltStats.hltv_rating),
+      winRate: num(ltStats.winRate, ltStats.win_rate, lt?.win_rate), played: num(ltStats.matches, lt?.total_matches, matches.length),
+      wins: num(ltStats.wins, lt?.wins), losses: num(ltStats.losses, lt?.losses), ties: num(ltStats.ties, lt?.ties), hsPercent: num(ltStats.hsPercent, ltStats.hs_percent),
+      kills, deaths, assists: num(ltStats.assists, lt?.assists), headshots: num(ltStats.headshots, lt?.headshots), adr: num(ltStats.adr, lt?.adr) ?? (rounds ? damage / rounds : null), damage, rounds
     };
     return {
       source: 'cs2space', sourceUrl: `https://cs2.space/api/profile/${steamid64}`,
       raw,
-      steam, faceit: { player: face, game: faceGame }, leetify: lt,
+      steam, faceit: face ? { player: face, game: faceGame } : null, leetify: lt,
       stats: totals, matches, premier, competitiveRanks
     };
   } finally { clearTimeout(timer); }
