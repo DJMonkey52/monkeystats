@@ -98,7 +98,22 @@ function extractPremier(raw: any) {
     if (typeof s === 'object') {
       const rating = num(s.rating, s.elo, s.skillLevel, s.current, s.currentRating, s.rank);
       const history = Array.isArray(s.history) ? s.history.map((h: any) => ({ season: num(h.season, h.seasonNumber), rating: num(h.rating, h.currentRating, h.elo, h.current), best: num(h.best, h.bestRating), wins: num(h.wins) })).filter((h: any) => h.season != null) : [];
-      return { rating, previousRating: num(s.previousRating, s.previous, s.bestPrevious), season: num(s.season, s.seasonNumber), history };
+      if (rating != null) return { rating, previousRating: num(s.previousRating, s.previous, s.bestPrevious), season: num(s.season, s.seasonNumber), history };
+    }
+  }
+  // Fallback: cs2.space documents `leetify.games` as an array of entries tagged by
+  // dataSource (e.g. "matchmaking", "premier"). Premier rating lives in one of those
+  // entries as skillLevel/elo, well outside the 1-18 competitive-rank range.
+  const gameArrays = findArrays(raw, a => a.length > 0 && a.some(x => x && typeof x === 'object' && (x.dataSource || x.data_source)));
+  for (const list of gameArrays) {
+    const entry = list.find((x: any) => {
+      const src = String(x?.dataSource ?? x?.data_source ?? '').toLowerCase();
+      const level = num(x.skillLevel, x.skill_level, x.elo, x.rating);
+      return src.includes('premier') || (level != null && level > 18);
+    });
+    if (entry) {
+      const rating = num(entry.skillLevel, entry.skill_level, entry.elo, entry.rating);
+      if (rating != null) return { rating, previousRating: null, season: num(entry.season, entry.seasonNumber), history: [] };
     }
   }
   return { rating: null, previousRating: null, season: null, history: [] };

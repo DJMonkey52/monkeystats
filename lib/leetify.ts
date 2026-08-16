@@ -35,8 +35,8 @@ async function get<T>(path: string, params: Record<string, string>) {
   try { const res = await fetch(url, { headers: headers(), cache: "no-store", signal: controller.signal }); if (!res.ok) throw new Error(`Leetify ${res.status}`); return (await res.json()) as T; }
   finally { clearTimeout(timer); }
 }
-export async function getLeetifyProfile(steamid64: string) { return get<LeetifyProfile>("/v3/profile", { steam64_id: steamid64 }); }
-export async function getLeetifyMatches(steamid64: string) { return get<LeetifyMatch[]>("/v3/profile/matches", { steam64_id: steamid64 }); }
+export async function getLeetifyProfile(steamid64: string) { return get<LeetifyProfile>("/v3/profile", { steamId: steamid64 }); }
+export async function getLeetifyMatches(steamid64: string) { return get<LeetifyMatch[]>("/v3/profile/matches", { steamId: steamid64 }); }
 function finite(v: unknown): v is number { return typeof v === "number" && Number.isFinite(v); }
 function sum(rows: MatchPlayerStats[], key: keyof MatchPlayerStats) { return rows.reduce((n, row) => n + (finite(row[key]) ? Number(row[key]) : 0), 0); }
 function avg(rows: MatchPlayerStats[], key: keyof MatchPlayerStats) { const values = rows.map(r => r[key]).filter(finite).map(Number); return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; }
