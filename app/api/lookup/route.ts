@@ -5,6 +5,7 @@ import { getFaceitCs2Stats, getFaceitPlayerBySteamId } from "@/lib/faceit";
 import { getPremierRating } from "@/lib/premier";
 import { buildPlayerAnalytics, getLeetifyMatches, getLeetifyProfile } from "@/lib/leetify";
 import { getCsstatsProfile } from "@/lib/csstats";
+import { getCs2SpaceProfile } from "@/lib/cs2space";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     ]);
     if (!profile) return NextResponse.json({ error: "Steam-профиль не найден или закрыт." }, { status: 404 });
 
-    const [faceitPlayer, premier, leetify, csstats] = await Promise.all([
+    const [faceitPlayer, premier, leetify, csstats, cs2space] = await Promise.all([
       getFaceitPlayerBySteamId(steamid64, profile.personaname).catch(() => null),
       getPremierRating(steamid64).catch(() => null),
       (async () => {
@@ -40,28 +41,51 @@ export async function GET(req: NextRequest) {
           return null;
         }
       })(),
-      getCsstatsProfile(steamid64).catch(() => null)
+      getCsstatsProfile(steamid64).catch(() => null),
+      getCs2SpaceProfile(steamid64).catch((e) => { console.warn('CS2.SPACE lookup failed:', e); return null; })
     ]);
 
     const faceitStats = faceitPlayer
       ? await getFaceitCs2Stats(faceitPlayer.player_id).catch(() => null)
       : null;
 
+    const sp = cs2space?.steam || {};
+    const unifiedProfile = cs2space ? {
+      ...profile,
+      ...sp,
+      personaname: sp.personaname ?? sp.personaName ?? sp.name ?? sp.nickname ?? profile.personaname,
+      avatarfull: sp.avatarfull ?? sp.avatarFull ?? sp.avatar ?? profile.avatarfull,
+      profileurl: sp.profileurl ?? sp.profileUrl ?? profile.profileurl,
+      personastate: sp.personastate ?? sp.personaState ?? profile.personastate,
+    } : profile;
+    const unifiedFaceit = cs2space?.faceit?.player ? {
+      nickname: faceitPlayer?.nickname ?? cs2space.faceit.player.nickname,
+      avatar: faceitPlayer?.avatar ?? cs2space.faceit.player.avatar,
+      country: faceitPlayer?.country ?? cs2space.faceit.player.country,
+      url: faceitPlayer?.faceit_url?.replace("{lang}", "en") ?? cs2space.faceit.player.faceit_url,
+      cs2: faceitPlayer?.games?.cs2 ?? cs2space.faceit.game ?? null,
+      stats: faceitStats ?? cs2space.faceit.game ?? null
+    } : (faceitPlayer ? { nickname: faceitPlayer.nickname, avatar: faceitPlayer.avatar, country: faceitPlayer.country, url: faceitPlayer.faceit_url?.replace("{lang}", "en"), cs2: faceitPlayer.games?.cs2 ?? null, stats: faceitStats } : null);
+    const unifiedStats = cs2space?.stats ? { ...(csstats?.stats || {}), ...cs2space.stats } : (csstats?.stats || {});
+    const unifiedMatches = cs2space?.matches?.length ? cs2space.matches : (leetify?.matches?.length ? leetify.matches : (csstats?.matches || []));
+    const unifiedRanks = cs2space?.competitiveRanks?.length ? cs2space.competitiveRanks : (csstats?.competitiveRanks || []);
+    const unifiedPremier = cs2space?.premier?.rating != null ? cs2space.premier : (csstats?.premier?.rating != null ? csstats.premier : premier);
+    const merged = cs2space ? {
+      steamid64, profile: unifiedProfile, bans, steamLevel: level, playtime,
+      premier: unifiedPremier,
+      leetify: { ...(leetify || {}), ...(cs2space.leetify || {}), matches: unifiedMatches, totals: { ...(leetify?.totals || {}), ...(cs2space.stats || {}) } },
+      faceit: unifiedFaceit,
+      csstats: { source: 'cs2space', sourceUrl: `https://cs2.space/api/profile/${steamid64}`, stats: unifiedStats, matches: unifiedMatches, premier: unifiedPremier, competitiveRanks: unifiedRanks },
+      cs2space
+    } : null;
+
+    if (merged) return NextResponse.json(merged);
+
     return NextResponse.json({
-      steamid64,
-      profile,
-      bans,
-      steamLevel: level,
-      playtime,
-      premier,
-      leetify,
+      steamid64, profile, bans, steamLevel: level, playtime, premier, leetify,
       faceit: faceitPlayer ? {
-        nickname: faceitPlayer.nickname,
-        avatar: faceitPlayer.avatar,
-        country: faceitPlayer.country,
-        url: faceitPlayer.faceit_url?.replace("{lang}", "en"),
-        cs2: faceitPlayer.games?.cs2 ?? null,
-        stats: faceitStats
+        nickname: faceitPlayer.nickname, avatar: faceitPlayer.avatar, country: faceitPlayer.country,
+        url: faceitPlayer.faceit_url?.replace("{lang}", "en"), cs2: faceitPlayer.games?.cs2 ?? null, stats: faceitStats
       } : null,
       csstats
     });

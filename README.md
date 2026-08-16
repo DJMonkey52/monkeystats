@@ -1,28 +1,21 @@
-# RADAR // CS2 Player Intelligence
+# CS2 Radar Stats — real data build
 
-Next.js приложение для поиска игрока по SteamID64 / Steam URL.
+## Required Vercel variables
 
-## Что теперь показывает
+```env
+STEAM_API_KEY=...
+CS2SPACE_API_KEY=...
+FACEIT_API_KEY=...
+LEETIFY_API_KEY=...
+```
 
-- Premier rating и изменение рейтинга;
-- последние 30 обработанных матчей;
-- K/D, ADR, HS%, win rate, kills/deaths/assists;
-- Leetify Rating, CT/T rating;
-- Aim, Positioning, Utility, Clutch, Opening;
-- Accuracy, Preaim, Reaction time, Spray accuracy;
-- trade kills / traded deaths;
-- multi-kills 1K–5K, MVP, flash/HE/molotov/smoke;
-- Steam playtime, уровень, дату аккаунта, VAC/Game bans;
-- FACEIT ELO/level, если FACEIT API доступен.
+`CS2SPACE_API_KEY` is the primary source for real CS2 player data. It aggregates Steam, FACEIT and Leetify and exposes Premier, matchmaking ranks, FACEIT Elo and recent match/performance data through one server-side request. The free tier is currently advertised as 500 calls/month.
 
-## Vercel
+FACEIT and Leetify keys remain as fallbacks/direct sources. CSStats scraping is used only when CS2.SPACE is not configured, because CSStats currently places detailed player statistics behind authentication.
 
-Добавьте Environment Variables:
+Player routes:
 
-- `STEAM_API_KEY` — обязателен для Steam Web API.
-- `LEETIFY_API_KEY` — рекомендуется для стабильного доступа к Leetify Public API.
-- `FACEIT_API_KEY` — необязателен.
+- `/player/<steamid64>`
+- `/` for search
 
-Leetify Public API используется через `/v3/profile` и `/v3/profile/matches`. Если API недоступен, Premier rating пытается получить старым fallback-источником.
-
-Не храните ключи в клиентском коде: они используются только в Next.js API route.
+Never expose API keys with `NEXT_PUBLIC_`.
